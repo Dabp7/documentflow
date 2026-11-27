@@ -33,3 +33,31 @@ jobs:
       - run: npm run seed
       - run: npm run test:e2e
       - run: npm run demo:failure
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and start the delivered Compose demo
+        run: docker compose up -d --build
+      - name: Export ten documents through the container API and worker
+        shell: bash
+        run: |
+          curl --retry 30 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:4300/health
+          curl -fsS http://127.0.0.1:4300/api/exports -H 'Content-Type: application/json' -H 'Idempotency-Key: container-ci' -d '{"from":"2026-01-01T00:00:00Z","until":"2026-01-01T00:11:00Z","kind":"all","format":"zip","render":"source"}' > /tmp/request.json
+          id=$(jq -er '.id' /tmp/request.json)
+          for attempt in $(seq 1 60); do
+            state=$(curl -fsS "http://127.0.0.1:4300/api/exports/$id" | jq -r '.state')
+            if [ "$state" = completed ]; then break; fi
+            if [ "$state" = failed ]; then exit 1; fi
+            sleep 2
+          done
+          test "$state" = completed
+          curl -fsS "http://127.0.0.1:4300/api/exports/$id/download" -o /tmp/export.zip
+          unzip -t /tmp/export.zip
+          test "$(unzip -Z1 /tmp/export.zip | wc -l)" -eq 10
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Remove the isolated CI containers and volumes
+        if: always()
+        run: docker compose down -v
