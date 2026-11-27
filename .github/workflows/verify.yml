@@ -42,7 +42,7 @@ jobs:
       - name: Export ten documents through the container API and worker
         shell: bash
         run: |
-          curl --retry 30 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:4300/health
+          curl --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors -fsS http://127.0.0.1:4300/health
           curl -fsS http://127.0.0.1:4300/api/exports -H 'Content-Type: application/json' -H 'Idempotency-Key: container-ci' -d '{"from":"2026-01-01T00:00:00Z","until":"2026-01-01T00:11:00Z","kind":"all","format":"zip","render":"source"}' > /tmp/request.json
           id=$(jq -er '.id' /tmp/request.json)
           for attempt in $(seq 1 60); do
