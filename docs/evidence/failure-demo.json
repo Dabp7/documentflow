@@ -1,0 +1,57 @@
+{
+  "command": "npm run demo:failure",
+  "at": "2026-11-27T05:53:47.254Z",
+  "requestId": "33badc0b-c5c0-4211-bf12-3363593f38fc",
+  "killedRealWorker": true,
+  "recoveredLease": true,
+  "activeArtifacts": 1,
+  "result": {
+    "id": "33badc0b-c5c0-4211-bf12-3363593f38fc",
+    "state": "completed",
+    "filters": {
+      "from": "2026-01-01T00:00:00.000Z",
+      "kind": "all",
+      "until": "2026-01-01T00:11:00.000Z",
+      "format": "zip",
+      "render": "source"
+    },
+    "createdAt": "2026-11-27T05:53:33.467Z",
+    "processedCount": 10,
+    "errorCode": null,
+    "retryable": false,
+    "artifact": {
+      "checksum": "d5eeb43ba1884b1ea52c06d5193c428338d4a10cddca116a259463b0c94c81ce",
+      "documentCount": 10,
+      "bytes": "2700",
+      "durationMs": 103,
+      "peakRssBytes": "119394304",
+      "chromiumPeakRssBytes": null
+    },
+    "events": [
+      {
+        "fromState": null,
+        "toState": "queued",
+        "code": "REQUESTED",
+        "at": "2026-11-27T05:53:33.467Z"
+      },
+      {
+        "fromState": "queued",
+        "toState": "processing",
+        "code": "CLAIMED",
+        "at": "2026-11-27T05:53:38.915Z"
+      },
+      {
+        "fromState": "processing",
+        "toState": "processing",
+        "code": "LEASE_RECOVERED",
+        "at": "2026-11-27T05:53:47.018Z"
+      },
+      {
+        "fromState": "processing",
+        "toState": "completed",
+        "code": "PUBLISHED",
+        "at": "2026-11-27T05:53:47.149Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: DocumentFlow local demo
+  version: 0.1.0
+  description: Datos sintéticos. X-Demo-Actor es una identidad simulada, no autenticación productiva.
+servers:
+  - url: http://127.0.0.1:4300
+paths:
+  /health:
+    get:
+      responses:
+        '200': {description: API y PostgreSQL disponibles}
+  /api/documents:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/Actor'}
+        - {$ref: '#/components/parameters/Cursor'}
+      responses:
+        '200': {description: Hasta 100 documentos propios y nextCursor}
+        '400': {$ref: '#/components/responses/Error'}
+  /api/exports:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/Actor'}
+        - {$ref: '#/components/parameters/Cursor'}
+      responses:
+        '200': {description: Hasta 20 solicitudes propias y nextCursor}
+    post:
+      parameters:
+        - {$ref: '#/components/parameters/Actor'}
+        - {in: header, name: Idempotency-Key, required: true, schema: {type: string, pattern: '^[a-zA-Z0-9_-]{1,128}$'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Filters'}
+      responses:
+        '202': {description: Solicitud nueva o existente para la misma clave y payload}
+        '400': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/exports/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Actor'}
+    get:
+      responses:
+        '200': {description: Solicitud, artefacto y timeline}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/exports/{id}/cancel:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Actor'}
+    post:
+      responses:
+        '202': {description: Solicitud cancelada y fencing invalidado}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/exports/{id}/retry:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Actor'}
+    post:
+      responses:
+        '202': {description: Nuevo intento en cola para un fallo recuperable}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/exports/{id}/download:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - {$ref: '#/components/parameters/Actor'}
+    get:
+      responses:
+        '200':
+          description: ZIP completo; X-Content-SHA256 contiene el checksum hexadecimal
+          headers:
+            X-Content-SHA256: {schema: {type: string}}
+          content:
+            application/zip: {schema: {type: string, format: binary}}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    Actor: {in: header, name: X-Demo-Actor, schema: {type: string, enum: [demo, demo-other], default: demo}}
+    Cursor: {in: query, name: cursor, schema: {type: string, maxLength: 500}}
+    Id: {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Error:
+      description: Error de contrato
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Filters:
+      type: object
+      additionalProperties: false
+      required: [from, until]
+      properties:
+        from: {type: string, format: date-time, description: Inicio inclusivo con offset obligatorio}
+        until: {type: string, format: date-time, description: Fin excluyente posterior a from}
+        kind: {type: string, enum: [all, invoice, report], default: all}
+        format: {type: string, const: zip, default: zip}
+        render: {type: string, enum: [source, pdf], default: source}
+    Error:
+      type: object
+      required: [code, message, correlationId]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        correlationId: {type: string, format: uuid}

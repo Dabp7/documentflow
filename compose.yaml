@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: documentflow
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d documentflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  init:
+    build: .
+    command: ["sh", "-c", "npm run db:migrate && npm run seed"]
+    environment: &environment
+      DATABASE_URL: postgres://demo:demo@db:5432/documentflow
+      STORAGE_ROOT: /app/.data/storage
+      HOST: 0.0.0.0
+      CHROMIUM_NO_SANDBOX: "1"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    volumes: ["documents:/app/.data"]
+    depends_on:
+      db: { condition: service_healthy }
+  api:
+    build: .
+    command: ["npm", "run", "api"]
+    environment: *environment
+    ports: ["127.0.0.1:4300:4300"]
+    volumes: ["documents:/app/.data"]
+    depends_on:
+      init: { condition: service_completed_successfully }
+  worker:
+    build: .
+    command: ["npm", "run", "worker"]
+    environment: *environment
+    volumes: ["documents:/app/.data"]
+    depends_on:
+      init: { condition: service_completed_successfully }
+volumes:
+  postgres-data:
+  documents:

@@ -1,0 +1,20 @@
+{
+  "command": "npm run benchmark",
+  "at": "2026-11-27T05:55:31.597Z",
+  "node": "v22.15.0",
+  "os": "win32 10.0.19045 x64",
+  "cpu": "AMD Ryzen 3 3200U with Radeon Vega Mobile Gfx  ",
+  "totalMemoryBytes": 19263004672,
+  "datasetDocuments": 1000,
+  "render": "source",
+  "workerProcessSeparated": true,
+  "chromiumRss": "not_applicable_source_xml",
+  "result": {
+    "checksum": "5d080e942492f626b9c0e294c0f5ca9ca080e05be9bf1943d585ca23fe903714",
+    "documentCount": 1000,
+    "bytes": "270688",
+    "durationMs": 7604,
+    "peakRssBytes": "113807360",
+    "chromiumPeakRssBytes": null
+  }
+}
