@@ -81,6 +81,8 @@ Ver `.env.example`. `MAX_INFLIGHT_BYTES` limita un documento individual entre 64
 
 Arquitectura en `docs/architecture.md`, alcance en `docs/SPEC.md`, decisión de persistencia en `docs/decisions/001-local-first.md` y guion en `docs/demo.md`. Un worker vencido no puede publicar aunque retome su ejecución. Las claves finales son únicas por fencing token y solo los resultados registrados como completed se descargan. Los temporales de procesos muertos con más de una hora se limpian al arrancar un worker.
 
+El rename del ZIP y el COMMIT de PostgreSQL pertenecen a recursos distintos. Si se pierde la respuesta del COMMIT después del rename, el worker conserva el archivo final: una confirmación tardía puede referenciarlo. Esto puede dejar un archivo final huérfano tras un rollback real; no queda descargable por la API. Su limpieza diferida requiere certeza sobre la ausencia de referencia y queda fuera de esta entrega. Borrar inmediatamente ante una respuesta perdida podría dejar una exportación completed sin su ZIP.
+
 AWS está aplazado: no hay despliegue S3/ECS/Terraform ni necesidad de tarjeta o cuenta cloud. El perfil Docker de Chromium corre sin sandbox dentro de un contenedor sin privilegios; acepta exclusivamente una plantilla fija con texto escapado, JavaScript deshabilitado y peticiones de red bloqueadas. El perfil Node local conserva el sandbox. La demo no emite documentos fiscales, no contiene datos de la empresa y no es un sistema multiempresa.
 
 No se incluye una licencia de redistribución elegida en nombre del autor. La decisión de licencia queda pendiente de su elección; los permisos de uso no se deben inferir por ser un repositorio público.

@@ -1,4 +1,5 @@
-import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest'
+import { beforeAll, afterAll, beforeEach, describe, it, expect, vi } from 'vitest'
+import pg from 'pg'
 import { type Server } from 'node:http'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, readdir } from 'node:fs/promises'
@@ -51,6 +52,29 @@ describe('API, PostgreSQL real y worker', () => {
     expect(conflict.response.status).toBe(409)
     expect((await pool.query('SELECT count(*) FROM jobs')).rows[0].count).toBe('1')
   })
+  it('pagina sin omitir solicitudes con timestamps distintos en el mismo milisegundo', async () => {
+    await Promise.all(Array.from({ length: 25 }, () => create()))
+    await pool.query(`WITH numbered AS (SELECT id,row_number() OVER (ORDER BY id) AS position FROM export_requests)
+      UPDATE export_requests AS r SET created_at='2026-01-01T00:00:00.123000Z'::timestamptz + numbered.position * interval '1 microsecond'
+      FROM numbered WHERE r.id=numbered.id`)
+    const first = (await call('/exports')).data
+    expect(first.items).toHaveLength(20)
+    expect(first.nextCursor).not.toBeNull()
+    const second = (await call(`/exports?cursor=${encodeURIComponent(first.nextCursor)}`)).data
+    expect(second.items).toHaveLength(5)
+    expect(new Set([...first.items, ...second.items].map((item: any) => item.id)).size).toBe(25)
+  })
+  it('rechaza con 400 un cursor de solicitudes con UUID inválido y conserva IDs textuales de documentos', async () => {
+    const cursor = Buffer.from(JSON.stringify(['2026-01-01T00:00:00Z', 'not-a-uuid'])).toString('base64url')
+    const result = await call(`/exports?cursor=${cursor}`)
+    expect(result.response.status).toBe(400)
+    expect(result.data.code).toBe('INVALID_CURSOR')
+    const documentCursor = Buffer.from(JSON.stringify(['2026-01-01T00:01:00Z', 'doc-0000001'])).toString('base64url')
+    const documents = await call(`/documents?cursor=${documentCursor}`)
+    expect(documents.response.status).toBe(200)
+    expect(documents.data.items).toHaveLength(99)
+    expect(documents.data.items[0].id).toBe('doc-0000002')
+  })
   it('dos workers reclaman un solo propietario y publican un ZIP de 10 XML verificados', async () => {
     const request = (await create()).data
     const one = worker(15, 'one'); const two = worker(15, 'two')
@@ -76,6 +100,34 @@ describe('API, PostgreSQL real y worker', () => {
     await worker(15, 'new-worker').process(recovered!)
     const detail = (await call(`/exports/${request.id}`)).data
     expect(detail.state).toBe('completed'); expect(detail.events.some((event: any) => event.code === 'LEASE_RECOVERED')).toBe(true)
+  })
+  it('conserva el ZIP confirmado si se pierde el ack del COMMIT de publicación', async () => {
+    const request = (await create()).data
+    const query = pg.Client.prototype.query
+    const publishing = new WeakSet<pg.Client>()
+    let lostAcknowledgement = false
+    // Commit against real PostgreSQL, then simulate losing only its response.
+    // This exercises worker cleanup after a successfully committed publication.
+    const injected = vi.spyOn(pg.Client.prototype, 'query').mockImplementation(function (this: pg.Client, ...args: any[]) {
+      const result = (query as any).apply(this, args)
+      if (typeof args[0] === 'string' && args[0].startsWith('INSERT INTO artifacts(')) publishing.add(this)
+      if (args[0] === 'COMMIT' && publishing.has(this) && !lostAcknowledgement) {
+        return (result as Promise<unknown>).then(() => {
+          lostAcknowledgement = true
+          throw Object.assign(new Error('COMMIT acknowledgement lost'), { code: 'ECONNRESET' })
+        })
+      }
+      return result
+    } as any)
+    try { await worker().tick() } finally { injected.mockRestore() }
+    expect(lostAcknowledgement).toBe(true)
+    const detail = (await call(`/exports/${request.id}`)).data
+    expect(detail.state).toBe('completed')
+    const response = await fetch(`${base}/api/exports/${request.id}/download`)
+    expect(response.status).toBe(200)
+    const bytes = Buffer.from(await response.arrayBuffer())
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(detail.artifact.checksum)
+    expect((await zipEntries(bytes)).size).toBe(10)
   })
   it('cancelar durante procesamiento impide la descarga y limpia el temporal', async () => {
     const request = (await create()).data

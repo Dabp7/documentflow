@@ -25,6 +25,7 @@ paths:
         - {$ref: '#/components/parameters/Cursor'}
       responses:
         '200': {description: Hasta 20 solicitudes propias y nextCursor}
+        '400': {$ref: '#/components/responses/Error'}
     post:
       parameters:
         - {$ref: '#/components/parameters/Actor'}
