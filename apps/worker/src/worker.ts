@@ -114,7 +114,7 @@ export class Worker {
     const maxBytes = Number(process.env.MAX_INFLIGHT_BYTES ?? 1048576)
     if (!Number.isInteger(maxBytes) || maxBytes < 65536 || maxBytes > 16777216) throw new Error('MAX_INFLIGHT_BYTES entre 65536 y 16777216')
     let count = 0; let totalBytes = 0; let peakRss = process.memoryUsage().rss
-    let leaseError: unknown = null; let heartbeatBusy = false; let publishSucceeded = false
+    let leaseError: unknown = null; let heartbeatBusy = false
     let chromiumPeakRss: number | null = null; let memoryPending: Promise<void> | null = null
     const sampleChromium = (): Promise<void> => {
       const pid = this.browser?.process()?.pid
@@ -175,7 +175,6 @@ export class Worker {
       if (leaseError) throw leaseError
       await sampleChromium()
       await completeJob(claim, this.owner, { key: finalKey, checksum: hash.digest('hex'), count, bytes: totalBytes, duration: Math.round(performance.now() - started), peakRss, chromiumPeakRss }, () => publishObject(tempKey, finalKey))
-      publishSucceeded = true
       console.log(JSON.stringify({ event: 'completed', requestId: claim.request_id, documentCount: count, bytes: totalBytes, peakWorkerRssBytes: peakRss, sampledChromiumPeakRssBytes:chromiumPeakRss, durationMs: Math.round(performance.now() - started) }))
     } catch (error) {
       archive.destroy()
@@ -186,7 +185,9 @@ export class Worker {
       clearInterval(leaseTimer); clearInterval(memoryTimer); clearInterval(chromiumTimer)
       await memoryPending
       await removeObject(tempKey)
-      if (!publishSucceeded) await removeObject(finalKey)
+      // A failed COMMIT response does not prove a rollback. The final object may
+      // already be referenced, or become visible after a delayed COMMIT. Keep
+      // this fencing-specific key; deleting it here can break a completed export.
     }
   }
 }

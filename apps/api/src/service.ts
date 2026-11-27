@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import { pool, transaction } from '../../../packages/db/index.js'
 import { AppError, type Filters } from '../../../packages/contracts/index.js'
 import { canonicalFilters, payloadHash, decodeCursor, encodeCursor } from '../../../packages/domain/index.js'
@@ -23,9 +24,13 @@ export function publicRequest(row: Record<string, any>) {
 }
 export async function listExports(actor: string, cursor: unknown) {
   const values = decodeCursor(cursor)
-  const result = await pool.query(`SELECT * FROM export_requests WHERE actor_id=$1 ${values ? 'AND (created_at,id)<($2::timestamptz,$3::uuid)' : ''} ORDER BY created_at DESC,id DESC LIMIT 21`, values ? [actor, ...values] : [actor])
+  // Document cursors use text IDs; export cursors must satisfy the UUID contract.
+  if (values && !z.uuid().safeParse(values[1]).success) throw new AppError(400, 'INVALID_CURSOR', 'Cursor inválido')
+  // pg Date values retain milliseconds, while PostgreSQL stores microseconds.
+  // Keep the exact database instant in the opaque cursor so nearby rows survive.
+  const result = await pool.query(`SELECT *,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_created_at FROM export_requests WHERE actor_id=$1 ${values ? 'AND (created_at,id)<($2::timestamptz,$3::uuid)' : ''} ORDER BY created_at DESC,id DESC LIMIT 21`, values ? [actor, ...values] : [actor])
   const rows = result.rows.slice(0, 20)
-  return { items: rows.map(publicRequest), nextCursor: result.rows.length > 20 ? encodeCursor([rows.at(-1).created_at.toISOString(), rows.at(-1).id]) : null }
+  return { items: rows.map(publicRequest), nextCursor: result.rows.length > 20 ? encodeCursor([rows.at(-1).cursor_created_at, rows.at(-1).id]) : null }
 }
 export async function getExport(actor: string, id: string) {
   const row = (await pool.query('SELECT * FROM export_requests WHERE id=$1 AND actor_id=$2', [id, actor])).rows[0]
